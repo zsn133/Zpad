@@ -7,7 +7,7 @@
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-app.js";
     import { getDatabase, ref, set, remove, onValue } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-database.js";
-    import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-auth.js";
+    import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-auth.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyCf-1ZjhvhiK5PHB6d-sAWhYMGVSUunOT8",
@@ -49,6 +49,18 @@
       editNoteId = null;
       document.getElementById('note-title').value = "";
       document.getElementById('note-content').value = "";
+    }
+
+    // Add this function for resetting the password
+    function resetPassword() {
+      const email = document.getElementById('email').value;
+      if (!email) {
+        showAlert("Please provide your email to reset the password!", 'error');
+        return;
+      }
+      sendPasswordResetEmail(auth, email)
+        .then(() => showAlert("Password reset email sent!", 'success'))
+        .catch(err => showAlert(err.message, 'error'));
     }
 
     window.editNote = function(noteId, noteTitle, noteContent) {
@@ -147,6 +159,8 @@
         if (user) saveNote(user.uid, noteTitle, noteContent);
         else showAlert("Please log in to save notes!", 'error');
       });
+
+      document.getElementById('reset-password-btn').addEventListener('click', resetPassword);
 
       document.getElementById('search-input').addEventListener('input', (e) => {
         const user = auth.currentUser;
@@ -319,13 +333,14 @@
     <button class="hacker-btn" id="signup-btn">ꗃ</button>
     <button class="hacker-btn" id="login-btn">ꄗ</button>
     <button class="hacker-btn" id="logout-btn">↪</button>
+    <button class="hacker-btn" id="reset-password-btn">♻</button> <!-- Reset Password Button -->
     <textarea id="note-title" placeholder="Note Title"></textarea>
     <textarea id="note-content" rows="5" placeholder="Write your note..."></textarea>
     <input type="text" id="search-input" placeholder="Search Notes..." />
     <button class="hacker-btn" id="start-matrix-btn">⛇</button>
     <button class="hacker-btn" id="save-note-btn">⎙</button>
     <button class="hacker-btn" id="stop-matrix-btn">☃︎</button>
-    <div id="notes-container"><p>Please log in to view your notes.</p></div>
+    <div id="notes-container"><p>Please log in to view your notes.</p><p>Developer: Md Ridoan Mahmud Zisan</p></div>
   </div>
   <canvas id="matrix-canvas"></canvas>
 </body>
