@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Zpad</title>
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-app.js";
+    import { getDatabase, ref, set, remove, onValue } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-database.js";
+    import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-auth.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyCf-1ZjhvhiK5PHB6d-sAWhYMGVSUunOT8",
+      authDomain: "zpad-94d2a.firebaseapp.com",
+      databaseURL: "https://zpad-94d2a-default-rtdb.firebaseio.com",
+      projectId: "zpad-94d2a",
+      storageBucket: "zpad-94d2a.appspot.com",
+      messagingSenderId: "45005095449",
+      appId: "1:45005095449:web:73e0bdd7b2e3056915a088"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const database = getDatabase(app);
+    const auth = getAuth(app);
+
+    let editNoteId = null;
+    let matrixInterval;
+
+    function showAlert(message, type = 'info') {
+      const alertBox = document.getElementById('alert-box');
+      alertBox.textContent = message;
+      alertBox.className = `alert ${type} show`;
+      setTimeout(() => alertBox.classList.remove('show'), 3000);
+    }
+
+    async function saveNote(userId, noteTitle, noteContent) {
+      if (!noteContent.trim() || !noteTitle.trim()) {
+        showAlert("Title and note content cannot be empty!", 'error');
+        return;
+      }
+      const noteId = editNoteId || Date.now().toString();
+      await set(ref(database, `users/${userId}/notes/${noteId}`), {
+        title: noteTitle,
+        content: noteContent,
+        timestamp: new Date().toISOString(),
+        pinned: false
+      });
+      showAlert("Note saved successfully!", 'success');
+      editNoteId = null;
+      document.getElementById('note-title').value = "";
+      document.getElementById('note-content').value = "";
+    }
+
+    window.editNote = function(noteId, noteTitle, noteContent) {
+      document.getElementById('note-title').value = noteTitle;
+      document.getElementById('note-content').value = noteContent;
+      editNoteId = noteId;
+      showAlert("Editing note...", 'info');
+    };
+
+    window.deleteNote = async function(userId, noteId) {
+      await remove(ref(database, `users/${userId}/notes/${noteId}`));
+      showAlert("Note deleted successfully!", 'success');
+    };
+
+    window.pinNote = async function(userId, noteId, isPinned) {
+      await set(ref(database, `users/${userId}/notes/${noteId}/pinned`), !isPinned);
+      showAlert(`Note ${isPinned ? "unpinned" : "pinned"}!`, 'success');
+    };
+
+    window.viewNote = function(noteTitle, noteContent) {
+      alert(`Title: ${noteTitle}\n\n${noteContent}`);
+    };
+
+    window.shareNote = function(noteTitle, noteContent) {
+      if (navigator.share) {
+        navigator.share({
+          title: noteTitle,
+          text: noteContent,
+          url: window.location.href
+        })
+        .then(() => showAlert("Note shared successfully!", 'success'))
+        .catch(err => showAlert("Error sharing note.", 'error'));
+      } else {
+        showAlert("Sharing not supported on this device.", 'error');
+      }
+    };
+
+    function fetchNotes(userId, searchQuery = "") {
+      onValue(ref(database, `users/${userId}/notes`), (snapshot) => {
+        const notesContainer = document.getElementById('notes-container');
+        notesContainer.innerHTML = "";
+        const data = snapshot.val();
+        if (data) {
+          Object.entries(data)
+            .filter(([id, note]) => note.title.toLowerCase().includes(searchQuery.toLowerCase()) || note.content.toLowerCase().includes(searchQuery.toLowerCase()))
+            .sort((a, b) => b[1].pinned - a[1].pinned)
+            .forEach(([id, note]) => {
+              notesContainer.innerHTML += `
+                <div class="note ${note.pinned ? 'pinned' : ''}">
+                  <h3>${note.title}</h3>
+                  <p>${note.content}</p>
+                  <button class="hacker-btn" onclick="editNote('${id}', '${note.title}', '${note.content}')">✎ᝰ</button>
+                  <button class="hacker-btn" onclick="deleteNote('${userId}', '${id}')">⌦</button>
+                  <button class="hacker-btn" onclick="pinNote('${userId}', '${id}', ${note.pinned})">${note.pinned ? '⚘.' : '⚲'}</button>
+                  <button class="hacker-btn" onclick="shareNote('${note.title}', '${note.content}')">  જ✈︎ </button>
+                </div>
+              `;
+            });
+        } else {
+          notesContainer.innerHTML = "<p>No notes found!</p>";
+        }
+      });
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      document.getElementById('signup-btn').addEventListener('click', () => {
+        const email = document.getElementById('email').value;
+        const password = document.getElementById('password').value;
+        createUserWithEmailAndPassword(auth, email, password)
+          .then(() => showAlert("Sign up successful!", 'success'))
+          .catch(err => showAlert(err.message, 'error'));
+      });
+
+      document.getElementById('login-btn').addEventListener('click', () => {
+        const email = document.getElementById('email').value;
+        const password = document.getElementById('password').value;
+        signInWithEmailAndPassword(auth, email, password)
+          .then((userCredential) => {
+            fetchNotes(userCredential.user.uid);
+            showAlert("Login successful!", 'success');
+          })
+          .catch(err => showAlert(err.message, 'error'));
+      });
+
+      document.getElementById('logout-btn').addEventListener('click', () => {
+        signOut(auth).then(() => {
+          document.getElementById('notes-container').innerHTML = "<p>Please log in to see notes.</p>";
+          showAlert("Logged out successfully!", 'success');
+        });
+      });
+
+      document.getElementById('save-note-btn').addEventListener('click', () => {
+        const user = auth.currentUser;
+        const noteTitle = document.getElementById('note-title').value;
+        const noteContent = document.getElementById('note-content').value;
+        if (user) saveNote(user.uid, noteTitle, noteContent);
+        else showAlert("Please log in to save notes!", 'error');
+      });
+
+      document.getElementById('search-input').addEventListener('input', (e) => {
+        const user = auth.currentUser;
+        if (user) {
+          fetchNotes(user.uid, e.target.value);
+        }
+      });
+
+      document.getElementById('start-matrix-btn').addEventListener('click', () => {
+        startMatrixAnimation();
+      });
+
+      document.getElementById('stop-matrix-btn').addEventListener('click', () => {
+        stopMatrixAnimation();
+      });
+    });
+
+    // Matrix animation function
+    function startMatrixAnimation() {
+      const canvas = document.getElementById('matrix-canvas');
+      const ctx = canvas.getContext('2d');
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+
+      const columns = canvas.width / 20;
+      const drops = Array(Math.floor(columns)).fill(0);
+
+      function draw() {
+        ctx.fillStyle = "rgba(0, 0, 0, 0.05)";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = "#0F0";
+        ctx.font = "20px monospace";
+
+        for (let i = 0; i < drops.length; i++) {
+          const char = Math.random() > 0.5 ? '1' : '0';
+          ctx.fillText(char, i * 20, drops[i] * 20);
+
+          if (drops[i] * 20 > canvas.height && Math.random() > 0.975) {
+            drops[i] = 0;
+          }
+
+          drops[i]++;
+        }
+      }
+
+      matrixInterval = setInterval(draw, 33); // 30 FPS
+    }
+
+    function stopMatrixAnimation() {
+      clearInterval(matrixInterval);
+    }
+  </script>
+
+  <style>
+    /* Global Styles */
+    body {
+      background-color: #000;
+      color: #0F0;
+      font-family: 'Courier New', monospace;
+      text-align: center;
+      margin: 0;
+      padding: 0;
+    }
+    header {
+      font-size: 2em;
+      margin-top: 20px;
+    }
+    .hacker-btn {
+      background-color: #0F0;
+      color: #000;
+      border: none;
+      margin: 5px;
+      cursor: pointer;
+      box-shadow: 0 0 10px #0F0;
+      padding: 10px;
+    }
+    textarea, input {
+      background: #000;
+      border: 1px solid #0F0;
+      color: #0F0;
+      padding: 10px;
+      width: 90%;
+      box-shadow: 0 0 5px #0F0;
+    }
+    .note {
+      border: 1px solid #0F0;
+      padding: 10px;
+      margin: 10px;
+      text-align: left;
+      background: rgba(0, 0, 0, 0.8);
+    }
+    .note.pinned {
+      background: rgba(0, 255, 0, 0.1);
+    }
+    .alert {
+      visibility: hidden;
+      background: #0F0;
+      color: #000;
+      padding: 10px;
+      position: fixed;
+      top: 10px;
+      width: 80%;
+      left: 10%;
+      box-shadow: 0 0 10px #0F0;
+    }
+    .alert.show {
+      visibility: visible;
+    }
+
+    #matrix-canvas {
+      position: fixed;
+      top: 0;
+      left: 0;
+      z-index: -1;
+    }
+
+    /* Media Queries */
+    /* For tablets and larger screens */
+    @media (min-width: 768px) {
+      .hacker-btn {
+        font-size: 1.2em;
+        padding: 15px;
+      }
+      textarea, input {
+        width: 80%;
+      }
+      .note {
+        width: 60%;
+        margin: 20px auto;
+      }
+    }
+
+    /* For smaller devices like phones */
+    @media (max-width: 767px) {
+      .hacker-btn {
+        font-size: 0.8em;
+        padding: 8px;
+      }
+      textarea, input {
+        width: 100%;
+      }
+      .note {
+        width: 95%;
+        margin: 10px auto;
+      }
+    }
+
+    /* For very small mobile screens */
+    @media (max-width: 480px) {
+      header {
+        font-size: 1.5em;
+      }
+      .note {
+        padding: 8px;
+      }
+      .hacker-btn {
+        padding: 5px;
+        font-size: 0.7em;
+      }
+    }
+  </style>
+
+</head>
+<body>
+  <header><h2>Zpad</h2></header>
+  <div id="alert-box" class="alert"></div>
+  <div>
+    <input type="email" id="email" placeholder="Email">
+    <input type="password" id="password" placeholder="Password">
+    <button class="hacker-btn" id="signup-btn">ꗃ</button>
+    <button class="hacker-btn" id="login-btn">ꄗ</button>
+    <button class="hacker-btn" id="logout-btn">↪</button>
+    <textarea id="note-title" placeholder="Note Title"></textarea>
+    <textarea id="note-content" rows="5" placeholder="Write your note..."></textarea>
+    <input type="text" id="search-input" placeholder="Search Notes..." />
+    <button class="hacker-btn" id="start-matrix-btn">⛇</button>
+    <button class="hacker-btn" id="save-note-btn">⎙</button>
+    <button class="hacker-btn" id="stop-matrix-btn">☃︎</button>
+    <div id="notes-container"><p>Please log in to view your notes.</p></div>
+  </div>
+  <canvas id="matrix-canvas"></canvas>
+</body>
+</html>
